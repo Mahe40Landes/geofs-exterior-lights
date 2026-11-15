@@ -1,0 +1,1 @@
+javascript:(function()%7Bvar%20s%3Ddocument.createElement('script')%3Bs.src%3D'https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2FMahe40Landes%2Fgeofs-exterior-lights%40main%2Fgeofs-lights.js'%3Bdocument.body.appendChild(s)%3B%7D)()
