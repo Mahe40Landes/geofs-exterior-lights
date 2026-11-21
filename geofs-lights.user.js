@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GeoFS Exterior Lights
 // @namespace    https://github.com/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Nav, beacon, strobe, landing, taxi, runway turnoff, ice, logo and emergency-exit lights for GeoFS, each switchable. F7 = panel, keys 1-9 = toggle.
 // @author       you
 // @match        https://www.geo-fs.com/geofs.php*
@@ -41,7 +41,7 @@
     return;
   }
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.0.1';
   var STORE_KEY = 'geofs.lights.state.v1';
   var TICK_MS = 60;                    // ~16 fps update, cheap
   var M_PER_DEG_LAT = 111320;
@@ -361,7 +361,12 @@
   var el = {};
 
   var CSS = [
-    '#gfl-panel{font-family:Roboto,Arial,sans-serif;color:#e9eef5;font-size:13px}',
+    // the panel is a fixed overlay so it is visible whether or not it sits in a GeoFS panel
+    '#gfl-panel{position:fixed!important;left:14px!important;top:80px!important;z-index:99999!important;' +
+      'width:310px;max-height:calc(100vh - 120px);overflow:auto;display:none;' +
+      'background:rgba(16,20,26,.96)!important;border:1px solid rgba(255,255,255,.12);border-radius:8px;' +
+      'padding:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);font-family:Roboto,Arial,sans-serif;color:#e9eef5;font-size:13px}',
+    '#gfl-panel.gfl-open{display:block!important}',
     '#gfl-panel h3{margin:0 0 2px;font-size:15px;font-weight:500;color:#fff}',
     '#gfl-panel h3 small{opacity:.5;font-weight:400;font-size:11px}',
     '#gfl-panel .gfl-sub{opacity:.55;font-size:11px;margin-bottom:10px}',
@@ -377,7 +382,8 @@
     '#gfl-panel .gfl-foot button.ghost{background:#39424e}',
     '#gfl-panel .gfl-status{opacity:.6;font-size:11px;margin-top:8px;min-height:14px}',
     '#gfl-button{font-size:11px;font-weight:600;letter-spacing:.5px}',
-    '#gfl-button.gfl-any-on{color:#8dffbe}'
+    '#gfl-button.gfl-any-on{color:#8dffbe}',
+    '#gfl-button.gfl-active{color:#8dffbe;box-shadow:inset 0 -2px 0 #26b36b}'
   ].join('');
 
   function injectCss() {
@@ -389,19 +395,11 @@
   }
 
   function buildUi() {
-    var host = document.querySelector('.geofs-ui-left');
-    var floating = !host;
-
+    // Always a body-level overlay: hosting the panel inside GeoFS's own left menu made it
+    // invisible when that menu was closed, which looked like "the tab does not open".
     var panel = document.createElement('div');
     panel.id = 'gfl-panel';
-    if (!floating) {
-      panel.className = 'geofs-list geofs-toggle-panel';
-      panel.setAttribute('data-noblur', 'true');
-      panel.style.cssText = 'padding:10px 12px;display:none';
-    } else {
-      panel.style.cssText = 'position:fixed;left:14px;top:80px;z-index:9999;width:310px;background:rgba(16,20,26,.95);' +
-        'border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:12px;display:none';
-    }
+    panel.setAttribute('data-noblur', 'true');
 
     var rows = GROUPS.map(function (grp) {
       return '<div class="gfl-row">' +
@@ -423,7 +421,7 @@
       '</div>' +
       '<div class="gfl-status" id="gfl-status"></div>';
 
-    (host || document.body).appendChild(panel);
+    document.body.appendChild(panel);
 
     panel.querySelectorAll('.gfl-btn').forEach(function (b) {
       b.addEventListener('click', function (e) {
@@ -437,16 +435,7 @@
     panel.querySelector('#gfl-takeoff').addEventListener('click', function () { preset('takeoff'); });
 
     // toolbar button, next to GeoFS's own buttons
-    var bar = document.querySelector('.geofs-ui-bottom');
-    if (bar) {
-      var btn = document.createElement('button');
-      btn.id = 'gfl-button';
-      btn.title = 'Exterior lights (F7)';
-      btn.className = 'mdl-button mdl-js-button geofs-f-standard-ui';
-      btn.textContent = 'LIGHTS';
-      btn.addEventListener('click', function (e) { e.preventDefault(); togglePanel(); });
-      bar.appendChild(btn);
-    }
+    addButton();
 
     el.panel = panel;
     el.status = panel.querySelector('#gfl-status');
@@ -455,6 +444,24 @@
     GROUPS.forEach(function (grp) {
       el.buttons[grp.id] = panel.querySelector('.gfl-btn[data-group="' + grp.id + '"]');
     });
+  }
+
+  function addButton() {
+    if (document.getElementById('gfl-button')) return;
+    var bar = document.querySelector('.geofs-ui-bottom') || document.querySelector('.geofs-ui-left');
+    if (!bar) return;
+    var btn = document.createElement('button');
+    btn.id = 'gfl-button';
+    btn.type = 'button';
+    btn.title = 'Exterior lights (F7)';
+    btn.className = 'mdl-button mdl-js-button geofs-f-standard-ui';
+    btn.textContent = 'LIGHTS';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePanel();
+    });
+    bar.appendChild(btn);
   }
 
   function refreshUi() {
@@ -477,7 +484,11 @@
 
   function togglePanel(force) {
     runtime.panelOpen = force == null ? !runtime.panelOpen : !!force;
-    if (el.panel) el.panel.style.display = runtime.panelOpen ? 'block' : 'none';
+    if (el.panel) {
+      el.panel.style.display = runtime.panelOpen ? 'block' : 'none';
+      el.panel.classList.toggle('gfl-open', runtime.panelOpen);
+    }
+    if (el.button) el.button.classList.toggle('gfl-active', runtime.panelOpen);
     if (runtime.panelOpen) refreshUi();
   }
 
@@ -547,6 +558,10 @@
     rebuild();
     document.addEventListener('keydown', onKey);
     setInterval(loop, TICK_MS);
+    // the toolbar can be re-rendered by GeoFS: put the LIGHTS button back if it goes away
+    setInterval(function () {
+      if (!document.getElementById('gfl-button')) addButton();
+    }, 2000);
     console.log('%c[GeoFS Lights] v' + VERSION + ' ready — F7 panel, keys 1-9 toggle',
       'color:#26b36b;font-weight:bold');
   }
